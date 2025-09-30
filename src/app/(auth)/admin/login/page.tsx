@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -18,13 +20,22 @@ export default function AdminLoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.message ?? "Login failed");
       }
-      window.location.href = "/admin/dashboard";
-    } catch (err: any) {
-      setError(err.message ?? "Something went wrong");
+      
+      // Redirect to admin dashboard with a small delay to ensure cookie is set
+      setTimeout(() => {
+        window.location.href = "/admin/dashboard";
+      }, 100);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message ?? "Something went wrong");
+      } else {
+        setError("Something went wrong");
+      }
     } finally {
       setLoading(false);
     }
@@ -70,5 +81,3 @@ export default function AdminLoginPage() {
     </div>
   );
 }
-
-

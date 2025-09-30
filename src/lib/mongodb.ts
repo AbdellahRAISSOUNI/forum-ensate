@@ -1,7 +1,6 @@
 import mongoose, { ConnectionStates } from 'mongoose';
 
 declare global {
-    // eslint-disable-next-line no-var
     var _mongooseConnection: { promise: Promise<typeof mongoose> | null; conn: typeof mongoose | null } | undefined;
 }
 
@@ -11,9 +10,15 @@ if (!MONGODB_URI) {
     throw new Error('Missing MONGODB_URI in environment variables');
 }
 
-let cached = global._mongooseConnection;
-if (!cached) {
-    cached = global._mongooseConnection = { promise: null, conn: null };
+interface CachedConnection {
+    promise: Promise<typeof mongoose> | null;
+    conn: typeof mongoose | null;
+}
+
+const cached: CachedConnection = global._mongooseConnection || { promise: null, conn: null };
+
+if (!global._mongooseConnection) {
+    global._mongooseConnection = cached;
 }
 
 export async function connectToDatabase(): Promise<typeof mongoose> {
@@ -51,5 +56,3 @@ export function isMongooseConnected(): boolean {
     const state = mongoose.connection.readyState as ConnectionStates;
     return state === 1;
 }
-
-
