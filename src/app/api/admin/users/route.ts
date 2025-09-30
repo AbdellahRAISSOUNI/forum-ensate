@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { connectToDatabase } from '@/lib/mongodb';
 import { User, UserRole, StudentStatus } from '@/models/User';
-
-const SESSION_COOKIE = 'admin_session';
-
-// Middleware to check admin authentication
-async function checkAdminAuth() {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(SESSION_COOKIE);
-  
-  if (!session?.value) {
-    return false;
-  }
-  
-  return true;
-}
 
 interface QueryParams {
   role?: UserRole;
@@ -25,9 +12,14 @@ interface QueryParams {
 // GET /api/admin/users - List all users
 export async function GET(request: NextRequest) {
   try {
-    const isAuth = await checkAdminAuth();
-    if (!isAuth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+
+    if (session.user.role !== 'admin') {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
     }
 
     await connectToDatabase();
@@ -45,9 +37,10 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') as StudentStatus | null;
     if (status) query.status = status;
     
-    // Get users with pagination
+    // Get users with pagination and populate assigned rooms
     const users = await User.find(query)
-      .select('-passwordHash')
+      .select('-password')
+      .populate('assignedRooms', 'name location')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -73,9 +66,14 @@ export async function GET(request: NextRequest) {
 // POST /api/admin/users/:id/toggle-committee - Toggle committee status
 export async function POST(request: NextRequest) {
   try {
-    const isAuth = await checkAdminAuth();
-    if (!isAuth) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const session = await getServerSession(authOptions);
+    
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 401 });
+    }
+
+    if (session.user.role !== 'admin') {
+      return NextResponse.json({ error: 'Accès refusé' }, { status: 403 });
     }
     
     const { searchParams } = new URL(request.url);

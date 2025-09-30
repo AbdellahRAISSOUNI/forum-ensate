@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import StudentDashboard from "@/components/student/StudentDashboard";
-import LoadingSpinner from "@/components/ui/LoadingSpinner";
 import Link from "next/link";
+import LoadingSpinner from "@/components/ui/LoadingSpinner";
+import StudentDashboard from "@/components/student/StudentDashboard";
+import CommitteeExtraFeatures from "@/components/committee/CommitteeExtraFeatures";
 import { shouldForceReauth } from "@/lib/authUtils";
 
-export default function StudentDashboardPage() {
+export default function CommitteeDashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
@@ -28,12 +29,12 @@ export default function StudentDashboardPage() {
 
     // Check role when session is loaded
     if (status === "authenticated") {
-      if (session?.user?.role === "committee") {
-        // Redirect committee members to their dashboard
-        router.push("/comite/dashboard");
+      if (session?.user?.role === "student") {
+        // Redirect students to their dashboard
+        router.push("/etudiant/dashboard");
         return;
       }
-      if (session?.user?.role !== "student") {
+      if (session?.user?.role !== "committee") {
         setIsAuthorized(false);
         return;
       }
@@ -50,7 +51,7 @@ export default function StudentDashboardPage() {
     );
   }
 
-  // Show unauthorized message if not a student
+  // Show unauthorized message if not a committee member
   if (!isAuthorized) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-4">
@@ -63,7 +64,7 @@ export default function StudentDashboardPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm text-red-700">
-                Accès non autorisé. Cette page est réservée aux étudiants.
+                Accès non autorisé. Cette page est réservée aux membres du comité.
               </p>
             </div>
           </div>
@@ -75,6 +76,18 @@ export default function StudentDashboardPage() {
     );
   }
 
-  // Render student dashboard if authorized
-  return <StudentDashboard user={session!.user} />;
+  // Render student dashboard with committee extras
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Committee Extra Features at the top */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <CommitteeExtraFeatures />
+      </div>
+      
+      {/* Standard Student Dashboard (since committee members are also students) */}
+      <div className="border-t border-gray-200 pt-4">
+        <StudentDashboard user={session!.user} />
+      </div>
+    </div>
+  );
 }

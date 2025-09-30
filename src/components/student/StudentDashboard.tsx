@@ -2,8 +2,13 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Session } from "next-auth";
+import Link from "next/link";
+import { forceLogout } from "@/lib/authUtils";
 import CompanyCard from "./CompanyCard";
+import dynamic from "next/dynamic";
 import InterviewHistory from "./InterviewHistory";
+import SessionMonitor from "@/components/SessionMonitor";
+import RefreshSessionButton from "@/components/RefreshSessionButton";
 import { InterviewStatus } from "@/models/Interview";
 
 interface StudentDashboardProps {
@@ -34,6 +39,7 @@ interface Interview {
 }
 
 export default function StudentDashboard({ user }: StudentDashboardProps) {
+  const StudentNotifications = dynamic(() => import("@/components/StudentNotifications"), { ssr: false });
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [historyInterviews, setHistoryInterviews] = useState<Interview[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -42,87 +48,22 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
   // Fetch data function
   const fetchData = useCallback(async () => {
     try {
-      // In a real app, this would be an API call
-      // For now, we'll simulate with mock data
-      const mockInterviews: Interview[] = [
-        {
-          _id: "1",
-          student: user.id,
-          company: {
-            _id: "c1",
-            name: "Microsoft",
-            sector: "Technologie",
-            logo: "/microsoft.png", // This would be a real path in production
-            estimatedInterviewDuration: 30,
-          },
-          status: "WAITING",
-          queuePosition: 5,
-          totalInQueue: 12,
-          estimatedWaitTime: 45,
-          roomName: "Salle A",
-          roomLocation: "Bâtiment principal, 2ème étage",
-        },
-        {
-          _id: "2",
-          student: user.id,
-          company: {
-            _id: "c2",
-            name: "Orange",
-            sector: "Télécommunications",
-            estimatedInterviewDuration: 20,
-          },
-          status: "IN_PROGRESS",
-          queuePosition: 1,
-          totalInQueue: 8,
-          roomName: "Salle B",
-          roomLocation: "Bâtiment annexe, Rez-de-chaussée",
-        },
-      ];
-
-      const mockHistory: Interview[] = [
-        {
-          _id: "3",
-          student: user.id,
-          company: {
-            _id: "c3",
-            name: "IBM",
-            sector: "Technologie",
-          },
-          status: "COMPLETED",
-          queuePosition: 0,
-          totalInQueue: 0,
-          startedAt: new Date(Date.now() - 3600000).toISOString(),
-          completedAt: new Date(Date.now() - 3400000).toISOString(),
-        },
-        {
-          _id: "4",
-          student: user.id,
-          company: {
-            _id: "c4",
-            name: "Alten",
-            sector: "Conseil",
-          },
-          status: "CANCELLED",
-          queuePosition: 0,
-          totalInQueue: 0,
-        },
-      ];
-
-      // In a real app, we would fetch from API
-      // const response = await fetch('/api/student/interviews');
-      // const data = await response.json();
-      // setInterviews(data.activeInterviews);
-      // setHistoryInterviews(data.historyInterviews);
-
-      setInterviews(mockInterviews);
-      setHistoryInterviews(mockHistory);
+      const response = await fetch('/api/student/interviews');
+      if (!response.ok) {
+        throw new Error('Erreur lors de la récupération des données');
+      }
+      
+      const data = await response.json();
+      setInterviews(data.activeInterviews || []);
+      setHistoryInterviews(data.historyInterviews || []);
       setIsLoading(false);
+      setError(null);
     } catch (err) {
       console.error("Error fetching interviews:", err);
       setError("Erreur lors du chargement des entretiens");
       setIsLoading(false);
     }
-  }, [user.id]);
+  }, []);
 
   // Initial data load
   useEffect(() => {
@@ -139,17 +80,55 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
   }, [fetchData]);
 
   const handleReschedule = async (interviewId: string) => {
-    // In a real app, this would be an API call
-    console.log("Rescheduling interview:", interviewId);
-    // After API call, refresh data
-    await fetchData();
+    try {
+      const response = await fetch('/api/student/interviews', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          interviewId,
+          action: 'reschedule'
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors du report');
+      }
+
+      // Refresh data after successful action
+      await fetchData();
+    } catch (err) {
+      console.error("Error rescheduling interview:", err);
+      setError(err instanceof Error ? err.message : "Erreur lors du report");
+    }
   };
 
   const handleCancel = async (interviewId: string) => {
-    // In a real app, this would be an API call
-    console.log("Cancelling interview:", interviewId);
-    // After API call, refresh data
-    await fetchData();
+    try {
+      const response = await fetch('/api/student/interviews', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          interviewId,
+          action: 'cancel'
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur lors de l\'annulation');
+      }
+
+      // Refresh data after successful action
+      await fetchData();
+    } catch (err) {
+      console.error("Error cancelling interview:", err);
+      setError(err instanceof Error ? err.message : "Erreur lors de l'annulation");
+    }
   };
 
   const activeInterviews = interviews.filter(
@@ -158,14 +137,33 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <SessionMonitor />
+      <StudentNotifications />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-[#0b2b5c]">
-            Bonjour, {user.name || "Étudiant"}
-          </h1>
-          <p className="text-gray-600 mt-1">
-            Bienvenue sur votre tableau de bord du Forum ENSA Tétouan
-          </p>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-[#0b2b5c]">
+                Bonjour, {user.name || "Étudiant"}
+                {user.role === 'committee' && <span className="text-blue-600 text-lg ml-2">(Comité)</span>}
+              </h1>
+              <p className="text-gray-600 mt-1">
+                {user.role === 'committee' 
+                  ? "Tableau de bord étudiant - Vous avez aussi des fonctions de comité ci-dessus"
+                  : "Bienvenue sur votre tableau de bord du Forum ENSA Tétouan"
+                }
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <RefreshSessionButton />
+              <button
+                onClick={forceLogout}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+              >
+                Se déconnecter
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="mb-8">
@@ -173,9 +171,11 @@ export default function StudentDashboard({ user }: StudentDashboardProps) {
             <h2 className="text-xl font-semibold text-[#0b2b5c]">
               Mes entreprises sélectionnées
             </h2>
-            <button className="px-4 py-2 bg-[#0b2b5c] text-white rounded-md hover:bg-[#0a244e] transition-colors">
-              Sélectionner des entreprises
-            </button>
+            <Link href="/etudiant/entreprises">
+              <button className="px-4 py-2 bg-[#0b2b5c] text-white rounded-md hover:bg-[#0a244e] transition-colors">
+                Sélectionner des entreprises
+              </button>
+            </Link>
           </div>
 
           {isLoading ? (

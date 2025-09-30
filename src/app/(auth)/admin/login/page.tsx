@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { signIn, useSession } from 'next-auth/react';
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -9,33 +10,40 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { data: session, status } = useSession();
+
+  // Redirect if already authenticated as admin
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.role === "admin") {
+      router.push("/admin/dashboard");
+    }
+  }, [session, status, router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
+    
     try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
       });
-      
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message ?? "Login failed");
+
+      if (result?.error) {
+        setError(result.error === 'CredentialsSignin' 
+          ? 'Email ou mot de passe incorrect' 
+          : 'Erreur de connexion');
+      } else if (result?.ok) {
+        // Wait a moment for session to update, then redirect
+        setTimeout(() => {
+          router.push('/admin/dashboard');
+        }, 100);
       }
-      
-      // Redirect to admin dashboard with a small delay to ensure cookie is set
-      setTimeout(() => {
-        window.location.href = "/admin/dashboard";
-      }, 100);
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setError(err.message ?? "Something went wrong");
-      } else {
-        setError("Something went wrong");
-      }
+      console.error('Login error:', err);
+      setError('Une erreur est survenue');
     } finally {
       setLoading(false);
     }

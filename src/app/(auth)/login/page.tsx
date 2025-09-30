@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
@@ -18,7 +18,16 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (status === "authenticated" && session) {
-      router.push('/etudiant/dashboard');
+      // Clear any force reauth flags since user is now authenticated
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('force_reauth');
+      }
+      
+      if (session.user.role === 'committee') {
+        router.push('/comite/dashboard');
+      } else {
+        router.push('/etudiant/dashboard');
+      }
     }
   }, [session, status, router]);
 
@@ -46,6 +55,12 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+
+    // Clear any cached authentication data before login
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('force_reauth');
+      sessionStorage.clear();
+    }
 
     try {
       const result = await signIn('credentials', {
@@ -163,5 +178,18 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0b2b5c]"></div>
+        <div className="ml-3">Chargement...</div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
